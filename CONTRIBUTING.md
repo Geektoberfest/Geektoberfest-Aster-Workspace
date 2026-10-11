@@ -144,7 +144,12 @@ aster-workspace/
 
    # Test production build
    npm run build
+
+   # Run the backend tests (in-memory MongoDB, no setup needed)
+   npm test
    ```
+
+   If you change the API, add or update tests in `server/tests/`. See [Running Tests](README.md#running-tests).
 
 ---
 

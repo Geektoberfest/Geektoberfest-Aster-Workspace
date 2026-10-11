@@ -85,7 +85,28 @@ Run these from the repository root unless noted otherwise:
 | `npm run dev:server` | Start Express only |
 | `npm run build` | Create a production client build |
 | `npm run lint --prefix client` | Lint the frontend |
+| `npm test` | Run the backend test suite |
 | `npm run start --prefix server` | Start the API in production mode |
+
+## Running Tests
+
+The backend has an automated test suite (Vitest + Supertest) covering authentication, pages, ownership rules, trash, and search. From the repository root:
+
+```bash
+npm test
+```
+
+Or from `server/`:
+
+```bash
+npm test              # run once
+npm run test:watch    # re-run on file changes
+```
+
+- Tests need **no setup**: no `server/.env`, no MongoDB install, and no accounts. They run against a throwaway in-memory MongoDB and never read `MONGO_URI`, so they cannot touch your real data.
+- The first run downloads a MongoDB binary (a few hundred MB) and caches it; later runs reuse it. To use a binary you already have, set `MONGOMS_SYSTEM_BINARY` to its path.
+- Each test file gets its own database and every collection is emptied after each test, so the suite can be run repeatedly.
+- Tests live in `server/tests/`. Use the helpers in `tests/helpers.js` (`createUser`, `createPage`) to create an authenticated user and pages.
 
 ## API Overview
 
