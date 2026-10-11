@@ -3,7 +3,7 @@ import protect from '../middleware/auth.js'
 import validate from '../middleware/validate.js'
 import {
   getPages, getTrash, getPage, createPage, updatePage, toggleFavorite,
-  deletePage, restorePage, duplicatePage, permanentDelete, emptyTrash, searchPages,
+  deletePage, restorePage, duplicatePage, movePage, permanentDelete, emptyTrash, searchPages,
 } from '../controllers/pageController.js'
 
 const router = Router()
@@ -18,6 +18,7 @@ router.post('/', validate('createPage'), createPage)
 router.put('/:id', validate('updatePage'), updatePage)
 router.patch('/:id/favorite', toggleFavorite)
 router.patch('/:id/restore', restorePage)
+router.patch('/:id/move', validate('movePage'), movePage)
 router.post('/:id/duplicate', duplicatePage)
 router.delete('/:id', deletePage)
 router.delete('/:id/permanent', permanentDelete)

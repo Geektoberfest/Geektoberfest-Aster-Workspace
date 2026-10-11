@@ -2,12 +2,12 @@ import Page, { emptyDoc } from '../models/Page.js'
 import ApiError from '../utils/apiError.js'
 import asyncHandler from '../utils/asyncHandler.js'
 import { extractText, escapeRegex, buildSnippet } from '../utils/tiptapText.js'
-import collectDescendantIds from '../utils/pageTree.js'
+import collectDescendantIds, { getNextPosition, isSelfOrAncestor } from '../utils/pageTree.js'
 
 export const getPages = asyncHandler(async (req, res) => {
   const pages = await Page.find({ owner: req.user.id, isDeleted: false })
-    .select('title icon parentPage isFavorite createdAt updatedAt')
-    .sort({ createdAt: 1 })
+    .select('title icon parentPage position isFavorite createdAt updatedAt')
+    .sort({ position: 1, createdAt: 1 })
     .lean()
   res.json({ success: true, data: { pages } })
 })
@@ -40,6 +40,7 @@ export const createPage = asyncHandler(async (req, res) => {
     title: title?.trim() || 'Untitled',
     icon: icon || '📄',
     parentPage: parentPage || null,
+    position: await getNextPosition(req.user.id, parentPage),
     owner: req.user.id,
   }
   if (content) {
@@ -125,9 +126,55 @@ export const duplicatePage = asyncHandler(async (req, res) => {
     content: original.content ?? emptyDoc(),
     contentText: original.contentText,
     parentPage: original.parentPage,
+    position: await getNextPosition(req.user.id, original.parentPage),
     owner: req.user.id,
   })
   res.status(201).json({ success: true, data: { page: copy } })
+})
+
+// Moves a page under `parentPage` (null = workspace root) at `index` among its new siblings
+export const movePage = asyncHandler(async (req, res) => {
+  const { parentPage = null, index } = req.body
+  if (!Number.isInteger(index) || index < 0) throw new ApiError(400, 'Index must be a non-negative integer')
+
+  const page = await Page.findOne({ _id: req.params.id, owner: req.user.id, isDeleted: false })
+  if (!page) throw new ApiError(404, 'Page not found')
+
+  if (parentPage) {
+    const parent = await Page.findOne({ _id: parentPage, owner: req.user.id, isDeleted: false })
+      .select('_id')
+      .lean()
+    if (!parent) throw new ApiError(400, 'Parent page not found')
+    if (await isSelfOrAncestor(req.user.id, page._id, parent._id)) {
+      throw new ApiError(400, 'A page cannot be moved into itself or one of its sub-pages')
+    }
+  }
+
+  const siblings = await Page.find({
+    owner: req.user.id,
+    isDeleted: false,
+    parentPage: parentPage || null,
+    _id: { $ne: page._id },
+  })
+    .sort({ position: 1, createdAt: 1 })
+    .select('_id')
+    .lean()
+
+  const orderedIds = siblings.map((sibling) => String(sibling._id))
+  orderedIds.splice(Math.min(index, orderedIds.length), 0, String(page._id))
+
+  // timestamps are left alone so reordering does not change "updatedAt" (used to sort favorites)
+  await Page.bulkWrite(
+    orderedIds.map((id, position) => ({
+      updateOne: {
+        filter: { _id: id, owner: req.user.id },
+        update: { $set: id === String(page._id) ? { position, parentPage: parentPage || null } : { position } },
+        timestamps: false,
+      },
+    }))
+  )
+
+  res.json({ success: true, data: { orderedIds } })
 })
 
 export const permanentDelete = asyncHandler(async (req, res) => {

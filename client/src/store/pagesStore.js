@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import pageService from '../services/pageService'
+import { getSiblings } from '../utils/pageTree'
 
 // Local (optimistic) helper: all descendant ids of a page, from the flat list
 const collectLocalDescendantIds = (pages, rootId) => {
@@ -82,6 +83,35 @@ export const usePagesStore = create((set, get) => ({
     const { data } = await pageService.duplicatePage(id)
     set((s) => ({ pages: [...s.pages, data.data.page] }))
     return data.data.page
+  },
+
+  // Optimistically reorders/reparents a page; rolls back if the server rejects the move
+  movePage: async (id, parentPage, index) => {
+    const previous = get().pages
+    const page = previous.find((p) => p._id === id)
+    if (!page) return
+    const siblingIds = getSiblings(previous, parentPage)
+      .filter((p) => p._id !== id)
+      .map((p) => p._id)
+    const target = Math.min(index, siblingIds.length)
+    if ((page.parentPage || null) === parentPage && getSiblings(previous, parentPage).findIndex((p) => p._id === id) === target) {
+      return
+    }
+    siblingIds.splice(target, 0, id)
+    const positions = new Map(siblingIds.map((siblingId, position) => [siblingId, position]))
+
+    set({
+      pages: previous.map((p) => {
+        if (p._id === id) return { ...p, parentPage, position: positions.get(id) }
+        return positions.has(p._id) ? { ...p, position: positions.get(p._id) } : p
+      }),
+    })
+    try {
+      await pageService.movePage(id, parentPage, target)
+    } catch (error) {
+      set({ pages: previous })
+      throw error
+    }
   },
 
   loadTrash: async () => {

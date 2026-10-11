@@ -21,6 +21,9 @@ const schemas = {
     icon: { label: 'Icon', type: 'string', maxLength: 16 },
     content: { label: 'Content', type: 'tiptapDoc' },
   },
+  movePage: {
+    parentPage: { label: 'Parent page', type: 'string', maxLength: 64 },
+  },
 }
 
 const validate = (schemaName) => (req, res, next) => {

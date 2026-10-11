@@ -9,6 +9,7 @@ export default {
   toggleFavorite: (id) => api.patch(`/pages/${id}/favorite`),
   restorePage: (id) => api.patch(`/pages/${id}/restore`),
   duplicatePage: (id) => api.post(`/pages/${id}/duplicate`),
+  movePage: (id, parentPage, index) => api.patch(`/pages/${id}/move`, { parentPage, index }),
   permanentDelete: (id) => api.delete(`/pages/${id}/permanent`),
   getTrash: () => api.get('/pages/trash'),
   emptyTrash: () => api.delete('/pages/trash'),
