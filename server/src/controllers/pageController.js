@@ -1,8 +1,9 @@
 import Page, { emptyDoc } from '../models/Page.js'
 import ApiError from '../utils/apiError.js'
 import asyncHandler from '../utils/asyncHandler.js'
-import { extractText, escapeRegex, buildSnippet } from '../utils/tiptapText.js'
+import { extractText, escapeRegex, buildSnippet, computeRelevanceScore } from '../utils/tiptapText.js'
 import collectDescendantIds from '../utils/pageTree.js'
+import { snapshotPage, deleteVersionsForPages } from '../services/pageVersions.js'
 
 export const getPages = asyncHandler(async (req, res) => {
   const pages = await Page.find({ owner: req.user.id, isDeleted: false })
@@ -62,6 +63,18 @@ export const updatePage = asyncHandler(async (req, res) => {
     update.contentText = extractText(content)
   }
   if (Object.keys(update).length === 0) throw new ApiError(400, 'Nothing to update')
+
+  // Snapshot the state being replaced; only when the title or content actually changes
+  if (update.title !== undefined || update.content !== undefined) {
+    const existing = await Page.findOne({ _id: req.params.id, owner: req.user.id, isDeleted: false })
+      .select('title content owner')
+      .lean()
+    if (!existing) throw new ApiError(404, 'Page not found')
+    const changed =
+      (update.title !== undefined && update.title !== existing.title) ||
+      (update.content !== undefined && JSON.stringify(update.content) !== JSON.stringify(existing.content))
+    if (changed) await snapshotPage(existing)
+  }
 
   const page = await Page.findOneAndUpdate(
     { _id: req.params.id, owner: req.user.id, isDeleted: false },
@@ -135,11 +148,15 @@ export const permanentDelete = asyncHandler(async (req, res) => {
   if (!page) throw new ApiError(404, 'Page not found in trash')
 
   const descendantIds = await collectDescendantIds(req.user.id, page._id, true)
-  const { deletedCount } = await Page.deleteMany({ _id: { $in: [page._id, ...descendantIds] }, owner: req.user.id })
+  const ids = [page._id, ...descendantIds]
+  const { deletedCount } = await Page.deleteMany({ _id: { $in: ids }, owner: req.user.id })
+  await deleteVersionsForPages(ids)
   res.json({ success: true, data: { deletedCount } })
 })
 
 export const emptyTrash = asyncHandler(async (req, res) => {
+  const trashed = await Page.find({ owner: req.user.id, isDeleted: true }).select('_id').lean()
+  await deleteVersionsForPages(trashed.map((p) => p._id))
   const { deletedCount } = await Page.deleteMany({ owner: req.user.id, isDeleted: true })
   res.json({ success: true, data: { deletedCount } })
 })
@@ -148,17 +165,63 @@ export const searchPages = asyncHandler(async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 100)
   if (!q) return res.json({ success: true, data: { pages: [] } })
 
+  const rawScope = String(req.query.scope || '').trim().toLowerCase()
+  const scope = rawScope === 'title' || rawScope === 'titles' ? 'title' : 'all'
+
+  const rawSort = String(req.query.sort || '').trim().toLowerCase()
+  const sort = rawSort === 'relevance' ? 'relevance' : 'updated'
+
   const regex = new RegExp(escapeRegex(q), 'i')
-  const pages = await Page.find({
+  const filter = {
     owner: req.user.id,
     isDeleted: false,
-    $or: [{ title: regex }, { contentText: regex }],
-  })
-    .select('title icon contentText updatedAt')
-    .sort({ updatedAt: -1 })
-    .limit(20)
-    .lean()
+  }
 
-  const results = pages.map(({ contentText, ...page }) => ({ ...page, snippet: buildSnippet(contentText, q) }))
+  if (scope === 'title') {
+    filter.title = regex
+  } else {
+    filter.$or = [{ title: regex }, { contentText: regex }]
+  }
+
+  let pages = []
+
+  if (sort === 'relevance') {
+    const candidates = await Page.find(filter)
+      .select('title icon contentText updatedAt')
+      .limit(100)
+      .lean()
+
+    candidates.sort((a, b) => {
+      const scoreA = computeRelevanceScore(a, q)
+      const scoreB = computeRelevanceScore(b, q)
+      if (scoreA !== scoreB) return scoreB - scoreA
+
+      if (scoreA >= 50) {
+        const lenA = (a.title || '').length
+        const lenB = (b.title || '').length
+        if (lenA !== lenB) return lenA - lenB
+      }
+
+      const timeA = new Date(a.updatedAt || 0).getTime()
+      const timeB = new Date(b.updatedAt || 0).getTime()
+      if (timeA !== timeB) return timeB - timeA
+
+      return String(a._id).localeCompare(String(b._id))
+    })
+
+    pages = candidates.slice(0, 20)
+  } else {
+    pages = await Page.find(filter)
+      .select('title icon contentText updatedAt')
+      .sort({ updatedAt: -1, _id: 1 })
+      .limit(20)
+      .lean()
+  }
+
+  const results = pages.map(({ contentText, ...page }) => ({
+    ...page,
+    snippet: buildSnippet(contentText, q),
+  }))
+
   res.json({ success: true, data: { pages: results } })
 })

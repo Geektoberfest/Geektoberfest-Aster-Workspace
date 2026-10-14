@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, FileWarning, MoreHorizontal, Star, Undo2 } from 'lucide-react'
 import Editor from '../components/editor/Editor'
+import VersionHistory from '../components/editor/VersionHistory'
 import EmojiPicker from '../components/ui/EmojiPicker'
 import PageMenu from '../components/sidebar/PageMenu'
 import { PageSkeleton } from '../components/ui/Skeletons'
@@ -26,6 +27,9 @@ export default function PageView() {
   const [title, setTitle] = useState('')
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
   const [isActionsOpen, setIsActionsOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  // Bumped when the document is replaced from outside the editor (version restore)
+  const [editorKey, setEditorKey] = useState(0)
   // null until the editor reports, so a previous page's count never flashes
   const [wordCount, setWordCount] = useState(null)
 
@@ -183,6 +187,35 @@ export default function PageView() {
     [scheduleSave]
   )
 
+  // Make sure the server has the latest edits, then swap in the restored version. Pending
+  // edits are saved first so a late autosave cannot overwrite the restored content.
+  const handleRestoreVersion = async (versionId) => {
+    try {
+      clearTimeout(saveTimer.current)
+      if (inflightRef.current) {
+        try { await inflightRef.current } catch { /* surfaced by the save itself */ }
+      }
+      if (dirtyRef.current) await performSave()
+      if (dirtyRef.current) throw new Error('Unsaved changes could not be saved')
+
+      const { data } = await pageService.restoreVersion(page._id, versionId)
+      const restored = data.data.page
+      latestTitle.current = restored.title
+      latestContent.current = restored.content
+      dirtyRef.current = false
+      versionRef.current += 1
+      setPage(restored)
+      setTitle(restored.title)
+      updatePageLocal(restored._id, { title: restored.title || 'Untitled' })
+      setEditorKey((k) => k + 1)
+      setSaveStatus('saved')
+      toast.success('Version restored')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not restore this version'))
+      throw error
+    }
+  }
+
   const handleEditorReady = useCallback((editor) => {
     editorRef.current = editor
   }, [])
@@ -307,18 +340,33 @@ export default function PageView() {
           <MoreHorizontal className="h-4 w-4" />
         </button>
         {isActionsOpen && (
-          <PageMenu page={{ ...page, isFavorite }} onClose={() => setIsActionsOpen(false)} showRename={false} />
+          <PageMenu
+            page={{ ...page, isFavorite }}
+            onClose={() => setIsActionsOpen(false)}
+            showRename={false}
+            onShowHistory={() => setIsHistoryOpen(true)}
+            getExportData={() => ({ title: latestTitle.current, content: latestContent.current ?? page.content })}
+          />
         )}
       </div>
 
       <Editor
-        key={page._id}
+        key={`${page._id}-${editorKey}`}
         initialContent={page.content}
         editable={!page.isDeleted}
         onChange={handleContentChange}
         onEditorReady={handleEditorReady}
         onWordCountChange={setWordCount}
       />
+
+      {isHistoryOpen && (
+        <VersionHistory
+          pageId={page._id}
+          canRestore={!page.isDeleted}
+          onRestore={handleRestoreVersion}
+          onClose={() => setIsHistoryOpen(false)}
+        />
+      )}
     </div>
   )
 }

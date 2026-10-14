@@ -1,12 +1,14 @@
 import { useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Copy, Pencil, Star, StarOff, Trash2 } from 'lucide-react'
+import { Copy, Download, History, Pencil, Star, StarOff, Trash2 } from 'lucide-react'
 import useClickOutside from '../../hooks/useClickOutside'
 import { usePagesStore } from '../../store/pagesStore'
 import { toast } from '../../store/toastStore'
 import { getErrorMessage } from '../../services/api'
+import pageService from '../../services/pageService'
+import { downloadMarkdownFile } from '../../utils/markdown'
 
-export default function PageMenu({ page, onClose, showRename = true }) {
+export default function PageMenu({ page, onClose, showRename = true, onShowHistory, getExportData }) {
   const ref = useRef(null)
   useClickOutside(ref, onClose)
   const navigate = useNavigate()
@@ -41,6 +43,20 @@ export default function PageMenu({ page, onClose, showRename = true }) {
     }
   }
 
+  // getExportData lets the open editor supply its latest (possibly unsaved) content;
+  // otherwise the saved page is fetched, so export also works from the sidebar
+  const handleExport = async () => {
+    onClose()
+    try {
+      const { title, content } = getExportData
+        ? getExportData()
+        : (await pageService.getPage(page._id)).data.data.page
+      downloadMarkdownFile({ title, content })
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not export the page'))
+    }
+  }
+
   const handleDelete = async () => {
     onClose()
     try {
@@ -65,6 +81,14 @@ export default function PageMenu({ page, onClose, showRename = true }) {
       )}
       <button onClick={handleDuplicate} className="menu-item">
         <Copy className="h-4 w-4" /> Duplicate
+      </button>
+      {onShowHistory && (
+        <button onClick={() => { onClose(); onShowHistory() }} className="menu-item">
+          <History className="h-4 w-4" /> Version history
+        </button>
+      )}
+      <button onClick={handleExport} className="menu-item">
+        <Download className="h-4 w-4" /> Export as Markdown
       </button>
       <div className="my-1 h-px bg-zinc-100 dark:bg-zinc-700" />
       <button

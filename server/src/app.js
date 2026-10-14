@@ -4,6 +4,7 @@ import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import authRoutes from './routes/authRoutes.js'
 import pageRoutes from './routes/pageRoutes.js'
+import uploadRoutes from './routes/uploadRoutes.js'
 import { notFound, errorHandler } from './middleware/errorHandler.js'
 
 const app = express()
@@ -22,6 +23,7 @@ app.use(cookieParser())
 app.get('/api/health', (req, res) => res.json({ success: true, data: { status: 'ok' } }))
 app.use('/api/auth', authRoutes)
 app.use('/api/pages', pageRoutes)
+app.use('/api/uploads', uploadRoutes)
 
 app.use(notFound)
 app.use(errorHandler)

@@ -9,6 +9,7 @@ Collaboration, sharing, comments, and team permissions are intentionally out of 
 - JWT authentication with an HTTP-only cookie
 - Nested pages with breadcrumbs and a collapsible sidebar tree
 - Tiptap editor with headings, lists, task lists, quotes, code, links, images, colors, and slash commands
+- Image uploads (PNG, JPEG, WebP up to 5 MB) from the `/` menu, stored on the server and visible only to their owner
 - Debounced, serialized autosave with visible save status
 - Search across page titles and plain-text content
 - Favorites, duplicate, soft delete, restore, permanent delete, and empty trash
@@ -68,6 +69,7 @@ The server reads these variables from `server/.env`:
 | `JWT_EXPIRES_IN` | Token lifetime, such as `7d` or `12h` | `7d` |
 | `CLIENT_URL` | Comma-separated allowed browser origins | `http://localhost:5173` |
 | `NODE_ENV` | Set to `production` to enable secure cookies | `development` |
+| `UPLOAD_DIR` | Directory where uploaded images are stored | `server/uploads` |
 
 Optional Vite variables:
 
@@ -131,6 +133,8 @@ All API responses use `{ success, data?, message? }`.
 | `POST` | `/api/pages/:id/duplicate` | Duplicate a page |
 | `DELETE` | `/api/pages/:id` | Move a page subtree to trash |
 | `DELETE` | `/api/pages/:id/permanent` | Permanently delete a page subtree |
+| `POST` | `/api/uploads` | Upload an image (`multipart/form-data`, field `image`; PNG, JPEG or WebP, max 5 MB) |
+| `GET` | `/api/uploads/:id` | Fetch an uploaded image (owner only) |
 
 ## Architecture
 
@@ -139,6 +143,7 @@ All API responses use `{ success, data?, message? }`.
 - Pages are stored as a flat collection with a `parentPage` reference. The client renders the tree; the server handles descendant operations.
 - Editor content is stored as Tiptap JSON. A plain-text projection is maintained for search snippets.
 - Every page query is scoped to the authenticated owner.
+- Uploaded images are validated by their actual bytes (not just the file name or type), saved under random names through `server/src/services/storage.js`, and served only to the user who uploaded them. That module is the single place to change to move from local disk to S3, Cloudinary or similar.
 
 ## Verification Checklist
 
