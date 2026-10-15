@@ -12,6 +12,7 @@ import { usePagesStore } from '../store/pagesStore'
 import { useUiStore } from '../store/uiStore'
 import { toast } from '../store/toastStore'
 import { getReadingMinutes } from '../utils/docStats'
+import { normalizeImageUrls } from '../utils/imageUpload'
 
 const SAVE_DEBOUNCE_MS = 800
 
@@ -120,6 +121,10 @@ export default function PageView() {
       .then(({ data }) => {
         if (cancelled) return
         const loaded = data.data.page
+        // One-time self-heal for pages saved before the relative-URL fix:
+        // rewrite "http://old-host/api/uploads/<id>" -> "/api/uploads/<id>".
+        const { doc: content, fixedCount } = normalizeImageUrls(loaded.content)
+        if (fixedCount > 0) loaded.content = content
         latestTitle.current = loaded.title
         latestContent.current = loaded.content
         dirtyRef.current = false
@@ -128,6 +133,10 @@ export default function PageView() {
         setTitle(loaded.title)
         setIsLoading(false)
         setSaveStatus('saved')
+        // Persist the migration without waiting for the next keystroke.
+        if (fixedCount > 0 && !loaded.isDeleted) {
+          pageService.updatePage(pageId, { content }).catch(() => {})
+        }
         if (location.state?.focusTitle) {
           requestAnimationFrame(() => {
             titleRef.current?.focus()
