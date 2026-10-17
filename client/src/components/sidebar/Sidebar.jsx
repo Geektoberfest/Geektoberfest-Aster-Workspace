@@ -6,6 +6,8 @@ import { SidebarSkeleton } from '../ui/Skeletons'
 import { useAuthStore } from '../../store/authStore'
 import { usePagesStore } from '../../store/pagesStore'
 import { useUiStore } from '../../store/uiStore'
+import { useDragStore } from '../../store/dragStore'
+import { getSiblings } from '../../utils/pageTree'
 import { toast } from '../../store/toastStore'
 import { getErrorMessage } from '../../services/api'
 
@@ -32,7 +34,30 @@ export default function Sidebar() {
     () => pages.filter((p) => p.isFavorite).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [pages]
   )
-  const rootPages = useMemo(() => pages.filter((p) => !p.parentPage), [pages])
+  const rootPages = useMemo(() => getSiblings(pages, null), [pages])
+  const movePage = usePagesStore((s) => s.movePage)
+  const dragId = useDragStore((s) => s.dragId)
+  const isRootTarget = useDragStore((s) => s.dropTarget?.id === 'root')
+
+  // Dropping on the empty area below the tree moves the page to the end of the root
+  const handleRootDragOver = (event) => {
+    if (!dragId) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    useDragStore.getState().setDropTarget({ id: 'root' })
+  }
+
+  const handleRootDrop = async (event) => {
+    if (!dragId) return
+    event.preventDefault()
+    const id = dragId
+    useDragStore.getState().endDrag()
+    try {
+      await movePage(id, null, rootPages.length)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not move the page'))
+    }
+  }
 
   const handleNewPage = async () => {
     try {
@@ -83,7 +108,11 @@ export default function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 pb-4">
+      <nav
+        onDragOver={handleRootDragOver}
+        onDrop={handleRootDrop}
+        className={`flex-1 overflow-y-auto px-2 pb-4 ${isRootTarget ? 'bg-accent/10' : ''}`}
+      >
         {!isPagesLoaded && <SidebarSkeleton />}
         {pagesLoadError && (
           <div className="mx-1 rounded-md border border-red-200 bg-red-50 p-2.5 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">

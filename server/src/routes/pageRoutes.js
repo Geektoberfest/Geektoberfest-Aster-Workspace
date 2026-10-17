@@ -3,7 +3,7 @@ import protect from '../middleware/auth.js'
 import validate from '../middleware/validate.js'
 import {
   getPages, getTrash, getPage, createPage, updatePage, toggleFavorite,
-  deletePage, restorePage, duplicatePage, permanentDelete, emptyTrash, searchPages,
+  deletePage, restorePage, duplicatePage, movePage, permanentDelete, emptyTrash, searchPages,
 } from '../controllers/pageController.js'
 import { listVersions, getVersion, restoreVersion } from '../controllers/versionController.js'
 
@@ -19,6 +19,7 @@ router.post('/', validate('createPage'), createPage)
 router.put('/:id', validate('updatePage'), updatePage)
 router.patch('/:id/favorite', toggleFavorite)
 router.patch('/:id/restore', restorePage)
+router.patch('/:id/move', validate('movePage'), movePage)
 router.post('/:id/duplicate', duplicatePage)
 router.get('/:id/versions', listVersions)
 router.get('/:id/versions/:versionId', getVersion)

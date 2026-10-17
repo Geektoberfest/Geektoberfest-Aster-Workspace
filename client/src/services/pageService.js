@@ -1,3 +1,4 @@
+
 import api from './api'
 
 export default {
@@ -9,14 +10,25 @@ export default {
   toggleFavorite: (id) => api.patch(`/pages/${id}/favorite`),
   restorePage: (id) => api.patch(`/pages/${id}/restore`),
   duplicatePage: (id) => api.post(`/pages/${id}/duplicate`),
+
+  // Drag-and-drop page reordering
+  movePage: (id, parentPage, index) =>
+    api.patch(`/pages/${id}/move`, { parentPage, index }),
+
+  // Page version history
   getVersions: (id) => api.get(`/pages/${id}/versions`),
-  getVersion: (id, versionId) => api.get(`/pages/${id}/versions/${versionId}`),
-  restoreVersion: (id, versionId) => api.post(`/pages/${id}/versions/${versionId}/restore`),
+  getVersion: (id, versionId) =>
+    api.get(`/pages/${id}/versions/${versionId}`),
+  restoreVersion: (id, versionId) =>
+    api.post(`/pages/${id}/versions/${versionId}/restore`),
+
   permanentDelete: (id) => api.delete(`/pages/${id}/permanent`),
   getTrash: () => api.get('/pages/trash'),
   emptyTrash: () => api.delete('/pages/trash'),
+
   searchPages: (params) => {
-    const queryParams = typeof params === 'string' ? { q: params } : params
+    const queryParams =
+      typeof params === 'string' ? { q: params } : params
     return api.get('/pages/search', { params: queryParams })
   },
 }

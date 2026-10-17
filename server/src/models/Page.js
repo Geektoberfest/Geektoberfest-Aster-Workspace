@@ -11,6 +11,8 @@ const pageSchema = new mongoose.Schema(
     // Plain-text projection of content, kept in sync for search + snippets
     contentText: { type: String, default: '', maxlength: 200000 },
     parentPage: { type: mongoose.Types.ObjectId, ref: 'Page', default: null },
+    // Order among siblings (ascending); ties fall back to createdAt
+    position: { type: Number, default: 0 },
     owner: { type: mongoose.Types.ObjectId, ref: 'User', required: true },
     isFavorite: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
