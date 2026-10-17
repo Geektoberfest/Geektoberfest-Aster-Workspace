@@ -8,7 +8,8 @@
     "dev": "concurrently -n api,web -c yellow,green \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
-    "build": "npm run build --prefix client"
+    "build": "npm run build --prefix client",
+    "test": "npm run test --prefix server && npm run test --prefix client"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

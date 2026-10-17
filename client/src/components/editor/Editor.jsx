@@ -12,10 +12,28 @@ import { TaskList } from '@tiptap/extension-task-list'
 import { TaskItem } from '@tiptap/extension-task-item'
 import SlashCommands from './SlashCommands'
 import FloatingToolbar from './FloatingToolbar'
+import UploadStatus from './UploadStatus'
+import { getEditorWordCount } from '../../utils/docStats'
 
-export default function Editor({ initialContent, editable = true, onChange, onEditorReady }) {
+// Only these schemes may persist in page JSON. Relative URLs ("/api/...", "#...")
+// are always allowed so uploads stay portable. This blocks `javascript:`,
+// `data:` and other executable/bloated payloads from links and images.
+const isAllowedUri = (url) => {
+  if (typeof url !== 'string' || url === '') return false
+  if (url.startsWith('/') || url.startsWith('#')) return true
+  try {
+    const parsed = new URL(url)
+    return ['http:', 'https:', 'mailto:', 'tel:'].includes(parsed.protocol)
+  } catch {
+    return false
+  }
+}
+
+export default function Editor({ initialContent, editable = true, onChange, onEditorReady, onWordCountChange }) {
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  const onWordCountChangeRef = useRef(onWordCountChange)
+  onWordCountChangeRef.current = onWordCountChange
 
   const editor = useEditor({
     extensions: [
@@ -26,11 +44,11 @@ export default function Editor({ initialContent, editable = true, onChange, onEd
         underline: false,
       }),
       Underline,
-      Link.configure({ openOnClick: false, autolink: true }),
+      Link.configure({ openOnClick: false, autolink: true, isAllowedUri }),
       Highlight,
       TextStyle,
       Color,
-      Image.configure({ inline: false, allowBase64: true }),
+      Image.configure({ inline: false, allowBase64: false, isAllowedUri }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({
@@ -40,7 +58,11 @@ export default function Editor({ initialContent, editable = true, onChange, onEd
     ],
     content: initialContent,
     editable,
-    onUpdate: ({ editor: current }) => onChangeRef.current(current.getJSON()),
+    onCreate: ({ editor: current }) => onWordCountChangeRef.current?.(getEditorWordCount(current)),
+    onUpdate: ({ editor: current }) => {
+      onChangeRef.current(current.getJSON())
+      onWordCountChangeRef.current?.(getEditorWordCount(current))
+    },
     editorProps: {
       attributes: {
         class: 'prose prose-zinc dark:prose-invert focus:outline-none min-h-[60vh] max-w-none',
@@ -59,8 +81,9 @@ export default function Editor({ initialContent, editable = true, onChange, onEd
 
   return (
     <div>
-      {editor && <FloatingToolbar editor={editor} />}
+      {editor && editable && <FloatingToolbar editor={editor} />}
       <EditorContent editor={editor} />
+      <UploadStatus />
     </div>
   )
 }

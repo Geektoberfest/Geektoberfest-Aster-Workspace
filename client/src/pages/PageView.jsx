@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, FileWarning, MoreHorizontal, Star, Undo2 } from 'lucide-react'
 import Editor from '../components/editor/Editor'
+import VersionHistory from '../components/editor/VersionHistory'
 import EmojiPicker from '../components/ui/EmojiPicker'
 import PageMenu from '../components/sidebar/PageMenu'
 import { PageSkeleton } from '../components/ui/Skeletons'
@@ -11,6 +12,8 @@ import { getErrorMessage } from '../services/api'
 import { usePagesStore } from '../store/pagesStore'
 import { useUiStore } from '../store/uiStore'
 import { toast } from '../store/toastStore'
+import { getReadingMinutes } from '../utils/docStats'
+import { normalizeImageUrls } from '../utils/imageUpload'
 
 const SAVE_DEBOUNCE_MS = 800
 
@@ -25,6 +28,11 @@ export default function PageView() {
   const [title, setTitle] = useState('')
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
   const [isActionsOpen, setIsActionsOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  // Bumped when the document is replaced from outside the editor (version restore)
+  const [editorKey, setEditorKey] = useState(0)
+  // null until the editor reports, so a previous page's count never flashes
+  const [wordCount, setWordCount] = useState(null)
 
   const titleRef = useRef(null)
   const editorRef = useRef(null)
@@ -110,12 +118,17 @@ export default function PageView() {
     let cancelled = false
     setIsLoading(true)
     setLoadError(null)
+    setWordCount(null)
 
     pageService
       .getPage(pageId)
       .then(({ data }) => {
         if (cancelled) return
         const loaded = data.data.page
+        // One-time self-heal for pages saved before the relative-URL fix:
+        // rewrite "http://old-host/api/uploads/<id>" -> "/api/uploads/<id>".
+        const { doc: content, fixedCount } = normalizeImageUrls(loaded.content)
+        if (fixedCount > 0) loaded.content = content
         latestTitle.current = loaded.title
         latestContent.current = loaded.content
         dirtyRef.current = false
@@ -124,6 +137,10 @@ export default function PageView() {
         setTitle(loaded.title)
         setIsLoading(false)
         setSaveStatus('saved')
+        // Persist the migration without waiting for the next keystroke.
+        if (fixedCount > 0 && !loaded.isDeleted) {
+          pageService.updatePage(pageId, { content }).catch(() => {})
+        }
         if (location.state?.focusTitle) {
           requestAnimationFrame(() => {
             titleRef.current?.focus()
@@ -178,6 +195,35 @@ export default function PageView() {
     },
     [scheduleSave]
   )
+
+  // Make sure the server has the latest edits, then swap in the restored version. Pending
+  // edits are saved first so a late autosave cannot overwrite the restored content.
+  const handleRestoreVersion = async (versionId) => {
+    try {
+      clearTimeout(saveTimer.current)
+      if (inflightRef.current) {
+        try { await inflightRef.current } catch { /* surfaced by the save itself */ }
+      }
+      if (dirtyRef.current) await performSave()
+      if (dirtyRef.current) throw new Error('Unsaved changes could not be saved')
+
+      const { data } = await pageService.restoreVersion(page._id, versionId)
+      const restored = data.data.page
+      latestTitle.current = restored.title
+      latestContent.current = restored.content
+      dirtyRef.current = false
+      versionRef.current += 1
+      setPage(restored)
+      setTitle(restored.title)
+      updatePageLocal(restored._id, { title: restored.title || 'Untitled' })
+      setEditorKey((k) => k + 1)
+      setSaveStatus('saved')
+      toast.success('Version restored')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Could not restore this version'))
+      throw error
+    }
+  }
 
   const handleEditorReady = useCallback((editor) => {
     editorRef.current = editor
@@ -282,6 +328,11 @@ export default function PageView() {
       />
 
       <div className="relative mb-4 flex items-center justify-end gap-1">
+        {wordCount !== null && (
+          <span className="mr-auto text-xs text-zinc-400 dark:text-zinc-500">
+            {wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'} · {getReadingMinutes(wordCount)} min read
+          </span>
+        )}
         <button
           onClick={handleToggleFavorite}
           disabled={page.isDeleted}
@@ -298,17 +349,33 @@ export default function PageView() {
           <MoreHorizontal className="h-4 w-4" />
         </button>
         {isActionsOpen && (
-          <PageMenu page={{ ...page, isFavorite }} onClose={() => setIsActionsOpen(false)} showRename={false} />
+          <PageMenu
+            page={{ ...page, isFavorite }}
+            onClose={() => setIsActionsOpen(false)}
+            showRename={false}
+            onShowHistory={() => setIsHistoryOpen(true)}
+            getExportData={() => ({ title: latestTitle.current, content: latestContent.current ?? page.content })}
+          />
         )}
       </div>
 
       <Editor
-        key={page._id}
+        key={`${page._id}-${editorKey}`}
         initialContent={page.content}
         editable={!page.isDeleted}
         onChange={handleContentChange}
         onEditorReady={handleEditorReady}
+        onWordCountChange={setWordCount}
       />
+
+      {isHistoryOpen && (
+        <VersionHistory
+          pageId={page._id}
+          canRestore={!page.isDeleted}
+          onRestore={handleRestoreVersion}
+          onClose={() => setIsHistoryOpen(false)}
+        />
+      )}
     </div>
   )
 }

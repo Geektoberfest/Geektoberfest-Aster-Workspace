@@ -3,9 +3,10 @@ import { Extension } from '@tiptap/core'
 import { ReactRenderer } from '@tiptap/react'
 import Suggestion from '@tiptap/suggestion'
 import {
-  Code, Heading1, Heading2, Heading3, Image as ImageIcon, List, ListChecks,
+  Code, Heading1, Heading2, Heading3, Image as ImageIcon, ImagePlus, List, ListChecks,
   ListOrdered, Minus, Quote, Type,
 } from 'lucide-react'
+import { pickAndUploadImage } from '../../utils/imageUpload'
 
 const COMMANDS = [
   {
@@ -79,10 +80,20 @@ const COMMANDS = [
     command: ({ editor, range }) => editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
   },
   {
-    title: 'Image',
+    title: 'Upload Image',
+    description: 'Upload a PNG, JPEG or WebP from your device',
+    icon: ImagePlus,
+    keywords: ['image', 'picture', 'photo', 'file', 'device'],
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run()
+      pickAndUploadImage(editor)
+    },
+  },
+  {
+    title: 'Image Link',
     description: 'Embed an image from a URL',
     icon: ImageIcon,
-    keywords: ['picture', 'photo'],
+    keywords: ['picture', 'photo', 'url', 'embed'],
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run()
       const url = window.prompt('Image URL')

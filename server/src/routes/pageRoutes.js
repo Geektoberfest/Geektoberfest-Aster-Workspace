@@ -5,6 +5,7 @@ import {
   getPages, getTrash, getPage, createPage, updatePage, toggleFavorite,
   deletePage, restorePage, duplicatePage, movePage, permanentDelete, emptyTrash, searchPages,
 } from '../controllers/pageController.js'
+import { listVersions, getVersion, restoreVersion } from '../controllers/versionController.js'
 
 const router = Router()
 router.use(protect)
@@ -20,6 +21,9 @@ router.patch('/:id/favorite', toggleFavorite)
 router.patch('/:id/restore', restorePage)
 router.patch('/:id/move', validate('movePage'), movePage)
 router.post('/:id/duplicate', duplicatePage)
+router.get('/:id/versions', listVersions)
+router.get('/:id/versions/:versionId', getVersion)
+router.post('/:id/versions/:versionId/restore', restoreVersion)
 router.delete('/:id', deletePage)
 router.delete('/:id/permanent', permanentDelete)
 
